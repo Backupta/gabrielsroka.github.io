@@ -48,7 +48,7 @@
             title: "Latest deleted authenticators",
             searchPlaceholder: "Search authenticator...",
             oktaFilter: 'eventType eq "security.authenticator.lifecycle.deactivate"',
-            backuptaFilterBy: 'type:DELETE;component:AUTHENTICATORS',
+            backuptaFilterBy: 'type:UPDATE;component:AUTHENTICATORS',
         },
         deletedAuthenticationPolicies: {
             menuTitle: 'Deleted Authentication Policies',
