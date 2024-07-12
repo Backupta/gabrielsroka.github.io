@@ -1224,6 +1224,7 @@
                 break;
         }
     }
+
     async function createObjectHistoryForUser(user) {
         const {logListPopup, searchInputHTML} = createPopupWithSearch(`User History for ${user.profile.firstName + " " + user.profile.lastName + " (" + user.id + ")"}`, "Event name", `${user.id}`);
         logListPopup.parent().attr('class', `historyListPopup`);
