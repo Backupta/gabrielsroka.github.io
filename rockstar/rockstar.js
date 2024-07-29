@@ -54,14 +54,14 @@
             menuTitle: 'Deleted Authentication Policies',
             title: "Latest deleted authentication policies",
             searchPlaceholder: "Search policy...",
-            oktaFilter: 'eventType eq "policy.rule.delete" and target.detailEntry.policyType eq "Okta:SignOn"',
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and target.detailEntry.policyType eq "Okta:SignOn"',
             backuptaFilterBy: 'type:DELETE;component:AUTHENTICATION_POLICIES',
         },
         deletedGlobalSessionPolicies: {
             menuTitle: 'Deleted Global Session Policies',
             title: "Latest deleted global session policies",
             searchPlaceholder: "Search policy...",
-            oktaFilter: 'eventType eq "policy.rule.delete" and target.detailEntry.policyType eq "OktaSignOn"',
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and target.detailEntry.policyType eq "OktaSignOn"',
             backuptaFilterBy: 'type:DELETE;component:SIGN_ON_POLICIES',
         },
         deletedProfileEnrollments:{
@@ -147,11 +147,19 @@
         } else if (location.pathname == "/admin/access/identity-providers") {
             openLogList('deletedIdPs');
         } else if (location.pathname == "/admin/access/multifactor") {
-            openLogList('deletedAuthenticators');
+            isOIE().then(isOIE => {
+                if (isOIE) {
+                    openLogList('deletedAuthenticators');
+                }
+            })
         } else if (location.pathname == "/admin/authn/authentication-policies") {
             openLogList('deletedAuthenticationPolicies');
         } else if (location.pathname == "/admin/access/policies") {
-            openLogList('deletedGlobalSessionPolicies');
+            isOIE().then(isOIE => {
+                if (isOIE) {
+                    openLogList('deletedGlobalSessionPolicies');
+                }
+            })
         } else if (location.pathname == "/admin/authn/policies") {
             openLogList('deletedProfileEnrollments');
         } else if (location.pathname == "/admin/access/networks") {
@@ -1387,6 +1395,10 @@
     if ($) {
         var xsrf = $("#_xsrfToken");
         if (xsrf.length) $.ajaxSetup({headers: {"X-Okta-XsrfToken": xsrf.text()}});
+    }
+    async function isOIE() {
+        let data = await getJSON("/.well-known/okta-organization");
+        return data.pipeline === "idx"
     }
     function createPopup(title, main) {
         function toggleClosed() {
