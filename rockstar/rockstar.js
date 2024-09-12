@@ -35,6 +35,83 @@
             searchPlaceholder: "Search app...",
             oktaFilter: 'eventType eq "application.lifecycle.delete"',
             backuptaFilterBy: 'type:DELETE;component:APPS',
+        },
+        deletedIdPs: {
+            menuTitle: 'Deleted Identity Providers',
+            title: "Latest deleted identity providers",
+            searchPlaceholder: "Search IdP...",
+            oktaFilter: 'eventType eq "system.idp.lifecycle.delete"',
+            backuptaFilterBy: 'type:DELETE;component:IDPS',
+        },
+        deletedAuthenticators: {
+            menuTitle: 'Deleted Authenticators',
+            title: "Latest deleted authenticators",
+            searchPlaceholder: "Search authenticator...",
+            oktaFilter: 'eventType eq "security.authenticator.lifecycle.deactivate"',
+            backuptaFilterBy: 'type:UPDATE;component:AUTHENTICATORS',
+        },
+        deletedAuthenticatorsClassic: {
+            menuTitle: 'Deleted Multifactor Policies',
+            title: "Latest deleted multifactor policies",
+            searchPlaceholder: "Search multifactor policies...",
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and target.detailEntry.policyType eq "OktaMfaEnroll"',
+            backuptaFilterBy: 'type:DELETE;component:MFA_ENROLL_POLICIES',
+        },
+        deletedAuthenticationPolicies: {
+            menuTitle: 'Deleted Authentication Policies',
+            title: "Latest deleted authentication policies",
+            searchPlaceholder: "Search policy...",
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and target.detailEntry.policyType eq "Okta:SignOn"',
+            backuptaFilterBy: 'type:DELETE;component:AUTHENTICATION_POLICIES',
+        },
+        deletedGlobalSessionPolicies: {
+            menuTitle: 'Deleted Global Session Policies',
+            title: "Latest deleted global session policies",
+            searchPlaceholder: "Search policy...",
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and target.detailEntry.policyType eq "OktaSignOn"',
+            backuptaFilterBy: 'type:DELETE;component:SIGN_ON_POLICIES',
+        },
+        deletedGlobalSessionPoliciesClassic: {
+            menuTitle: 'Deleted Authentication Policies',
+            title: "Latest deleted authentication policies",
+            searchPlaceholder: "Search policy...",
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and (target.detailEntry.policyType eq "Password" or target.detailEntry.policyType eq "OktaSignOn")',
+            backuptaFilterBy: 'type:DELETE;component:PASSWORD_POLICIES,SIGN_ON_POLICIES',
+        },
+        deletedProfileEnrollments:{
+            menuTitle: 'Deleted Profile Enrollments',
+            title: "Latest deleted profile enrollments",
+            searchPlaceholder: "Search profile enrollments...",
+            oktaFilter: 'eventType eq "policy.lifecycle.delete" and target.detailEntry.policyType eq "Okta:ProfileEnrollment"',
+            backuptaFilterBy: 'type:DELETE;component:PROFILE_ENROLLMENT_POLICIES',
+        },
+        deletedNetworks: {
+            menuTitle: 'Deleted Networks',
+            title: "Latest deleted networks",
+            searchPlaceholder: "Search network...",
+            oktaFilter: 'eventType eq "zone.delete"',
+            backuptaFilterBy: 'type:DELETE;component:NETWORK_ZONES',
+        },
+        deletedAPIAuthorizationServers: {
+            menuTitle: 'Deleted API Authorization Servers',
+            title: "Latest deleted API authorization servers",
+            searchPlaceholder: "Search server...",
+            oktaFilter: 'eventType eq "oauth2.as.deleted"',
+            backuptaFilterBy: 'type:DELETE;component:AUTHORIZATION_SERVERS',
+        },
+        deletedWorkflowInlineHooks: {
+            menuTitle: 'Deleted Workflow Inline Hooks',
+            title: "Latest deleted workflow inline hooks",
+            searchPlaceholder: "Search hook...",
+            oktaFilter: 'eventType eq "inline_hook.deleted"',
+            backuptaFilterBy: 'type:DELETE;component:INLINE_HOOKS',
+        },
+        deletedWorkflowEventHooks: {
+            menuTitle: 'Deleted Workflow Event Hooks',
+            title: "Latest deleted workflow event hooks",
+            searchPlaceholder: "Search hook...",
+            oktaFilter: 'eventType eq "event_hook.deleted"',
+            backuptaFilterBy: 'type:DELETE;component:EVENT_HOOKS',
         }
     };
 
@@ -81,6 +158,36 @@
             openLogList('deletedGroups');
         } else if (location.pathname == "/admin/apps/active") {
             openLogList('deletedApps');
+        } else if (location.pathname == "/admin/access/identity-providers") {
+            openLogList('deletedIdPs');
+        } else if (location.pathname == "/admin/access/multifactor") {
+            isOIE().then(isOIE => {
+                if (isOIE) {
+                    openLogList('deletedAuthenticators');
+                } else {
+                    openLogList('deletedAuthenticatorsClassic');
+                }
+            })
+        } else if (location.pathname == "/admin/authn/authentication-policies") {
+            openLogList('deletedAuthenticationPolicies');
+        } else if (location.pathname == "/admin/access/policies") {
+            isOIE().then(isOIE => {
+                if (isOIE) {
+                    openLogList('deletedGlobalSessionPolicies');
+                } else {
+                    openLogList('deletedGlobalSessionPoliciesClassic');
+                }
+            })
+        } else if (location.pathname == "/admin/authn/policies") {
+            openLogList('deletedProfileEnrollments');
+        } else if (location.pathname == "/admin/access/networks") {
+            openLogList('deletedNetworks');
+        } else if (location.pathname == "/admin/oauth2/as") {
+            openLogList('deletedAPIAuthorizationServers');
+        } else if (location.pathname == "/admin/workflow/inlinehooks") {
+            openLogList('deletedWorkflowInlineHooks');
+        } else if (location.pathname == "/admin/workflow/eventhooks") {
+            openLogList('deletedWorkflowEventHooks');
         }
 
         apiExplorer();
@@ -1307,6 +1414,10 @@
         var xsrf = $("#_xsrfToken");
         if (xsrf.length) $.ajaxSetup({headers: {"X-Okta-XsrfToken": xsrf.text()}});
     }
+    async function isOIE() {
+        let data = await getJSON("/.well-known/okta-organization");
+        return data.pipeline === "idx"
+    }
     function createPopup(title, main) {
         function toggleClosed() {
             popupBody.toggleClass('rs_closed');
@@ -1471,7 +1582,7 @@
         return o;
     }
 
-    // Listen to message from background.js.
+    // Listen to message from service_worker.js.
     if (window.chrome && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(function (request, _, sendResponse) {
         getJSON("/api/v1/groups").then(groups => {
             groups = groups
