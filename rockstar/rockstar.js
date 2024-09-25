@@ -112,6 +112,27 @@
             searchPlaceholder: "Search hook...",
             oktaFilter: 'eventType eq "event_hook.deleted"',
             backuptaFilterBy: 'type:DELETE;component:EVENT_HOOKS'
+        },
+        userObjectHistory: {
+            menuTitle: 'Show User History',
+            title: "User history for",
+            searchPlaceholder: "Search event name...",
+            oktaFilter: '(eventType sw "user.lifecycle" or eventType sw "user.account") and target.id eq "${objectId}"',
+            backuptaFilterBy: 'component:USERS',
+        },
+        groupObjectHistory: {
+            menuTitle: 'Show Group History',
+            title: "Group history for",
+            searchPlaceholder: "Search event name...",
+            oktaFilter: 'eventType sw "group." and target.id eq "${objectId}"',
+            backuptaFilterBy: 'component:GROUPS',
+        },
+        appObjectHistory: {
+            menuTitle: 'Show App History',
+            title: "App history for",
+            searchPlaceholder: "Search event name...",
+            oktaFilter: '(eventType sw "application.lifecycle" or eventType sw "application.user_membership") and target.id eq "${objectId}"',
+            backuptaFilterBy: 'component:APPS',
         }
     };
 
@@ -130,12 +151,17 @@
             directoryPerson();
         } else if (location.pathname == "/admin/groups") {
             directoryGroups();
-        } else if (location.pathname == "/admin/access/admins") {
+        } else if (location.pathname.match("/admin/group/")) {
+            groupHistory()
+        }else if (location.pathname == "/admin/access/admins") {
             securityAdministrators();
         } else if (location.pathname.match("/report/system_log_2")) {
             systemLog();
-        } else if (location.pathname.match("/admin/app/active_directory")) {
-            activeDirectory();
+        } else if (location.pathname.match("/admin/app/")) {
+            appHistory();
+            if (location.pathname.match("/admin/app/active_directory")) {
+                activeDirectory();
+            }
         } else if (location.pathname == "/admin/access/identity-providers") {
             identityProviders();
         }
@@ -464,6 +490,7 @@
                 return r.json();
             }
         });
+        createDiv(logListPopups.userObjectHistory.menuTitle, mainPopup, () => createObjectHistory('userObjectHistory', user));
     }
 
     function directoryGroups() {
@@ -511,7 +538,19 @@
             searcher(object);
         });
     }
-    
+
+    async function groupHistory() {
+        var groupId = location.pathname.split("/")[3];
+        const group = await getJSON(`/api/v1/groups/${groupId}`);
+        createDiv(logListPopups.groupObjectHistory.menuTitle, mainPopup, () => createObjectHistory('groupObjectHistory', group));
+    }
+
+    async function appHistory(){
+        var appId = location.pathname.split("/")[5];
+        const app = await getJSON(`/api/v1/apps/${appId}`);
+        createDiv(logListPopups.appObjectHistory.menuTitle, mainPopup, () => createObjectHistory('appObjectHistory', app));
+    }
+
     function securityAdministrators() {
         createDiv("Export Administrators", mainPopup, function () { // TODO: consider merging into exportObjects(). Will the Link headers be a problem?
             const adminsPopup = createPopup("Administrators");
@@ -1253,6 +1292,107 @@
         });
     }
 
+    function getObjectTitle(type, object) {
+        switch (type) {
+            case 'userObjectHistory':
+                return `${object.profile.firstName + " " + object.profile.lastName + " (" + object.id + ")"}`;
+            case 'groupObjectHistory':
+                return `${object.profile.name + " (" + object.id + ")"}`;
+            case 'appObjectHistory':
+                return `${object.label + " (" + object.id + ")"}`;
+        }
+    }
+
+    function createObjectHistory(type, object) {
+        const popupConfig = logListPopups[type];
+        const {logListPopup} = createPopupWithSearch(`${popupConfig.title} ${getObjectTitle(type, object)}`, popupConfig.searchPlaceholder, `${object.id}`);
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - 90);
+        let historyTable = displayHistoryResultTable(popupConfig, logListPopup, object.id);
+        fetchMoreHistory(`/api/v1/logs?since=${sinceDate.toISOString()}&limit=10&filter=${popupConfig.oktaFilter.replaceAll("${objectId}", object.id)}&sortOrder=DESCENDING`, 10, historyTable);
+    }
+
+    function displayHistoryResultTable(popupConfig, historyListPopup, objectId) {
+        let targetHTML = `<table class='data-list-table history-table rockstar' id='${objectId}' style='border: 1px solid #ddd'><thead>` +
+            "<tr><th>&nbsp</th><th>Event date</th><th>Event name</th><th>Actor</th><th>Target(s)</th><th>Changed attributes</th>" +
+            "<tbody></tbody></table>" +
+            "<div style='float: right'><a href='#' id='showMore'>Show more</a></div>" +
+            "<div style='margin-top: 15px;'><button id='btnRestore'>More details with Backupta</button></div>";
+        historyListPopup.append(targetHTML);
+
+        historyListPopup.find("#btnRestore").click(function () {
+            var baseUrl = localStorage.backuptaBaseUrl;
+            if (!baseUrl) {
+                settings();
+                return;
+            }
+            var targetUrl = `${baseUrl}/${getBackuptaTenantId()}/changes?filter_by=${popupConfig.backuptaFilterBy};id:${objectId}`;
+            open(targetUrl, '_blank');
+        });
+
+        $('#userSearch').on('keyup', function () {
+            const searchVal = $(this).val().toLowerCase();
+            $('.data-list-item').each(function () {
+                const eventName = $(this).data('eventname').toLowerCase();
+                if (eventName.includes(searchVal)) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+        return $('#' + objectId + '.history-table');
+    }
+
+    async function fetchMoreHistory(url, limit, historyTable) {
+        const response = await fetch(url.replace(/limit=\d+/, `limit=${limit}`), {headers});
+        const logs = await response.json();
+        if (logs.length === 0 || logs.length < limit) {
+            historyTable.parent().find('#showMore').hide();
+        } else {
+            historyTable.parent().find('#showMore').show();
+        }
+        const links = getLinks(response.headers.get('Link'));
+        appendResultsHistory(logs, links, historyTable);
+    }
+
+    function appendResultsHistory(logs, links, historyTable) {
+        let targetHTML = '';
+        logs.forEach(log => {
+            // For apps events, the actor shows up in targets. So if an app edits another app, it would get added to the actor app history without this. The first target is the modified target
+            if(log.target[0].id !== historyTable.attr('id')) {
+                return;
+            }
+            const target = log.target.filter(target => target.id !== historyTable.attr('id')).map(target =>target.displayName).filter(v => !!v).join(', ');
+            const changedAttributes = log.debugContext?.debugData?.changedAttributes;
+            let svgOutcome = '';
+            if(log.outcome.result === "SUCCESS") {
+                svgOutcome = '<svg width="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">\n' +
+                    '<circle cx="12" cy="12" r="10" stroke="green" stroke-width="1.5"/>\n' +
+                    '<path d="M8.5 12.5L10.5 14.5L15.5 9.5" stroke="green" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>\n' +
+                    '</svg>'
+            } else {
+                svgOutcome = '<svg width="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">\n' +
+                    '<circle cx="12" cy="12" r="10" stroke="red" stroke-width="1.5"/>\n' +
+                    '<path d="M12 7V13" stroke="red" stroke-width="1.5" stroke-linecap="round"/>\n' +
+                    '<circle cx="12" cy="16" r="1" fill="red"/>\n' +
+                    '</svg>'
+            }
+            targetHTML += `<tr class='data-list-item' data-eventname='${e(log.displayMessage)}'>`+
+                `<td style='text-align: center' title='${e(log.debugContext.debugData.errorMessage)}'>${svgOutcome}</td>` +
+                `<td>${log.published.substring(0, 19).replace('T', ' ')}</td>` +
+                `<td title='${e(log.eventType)}'>${e(log.displayMessage)}</td>` +
+                `<td title='${e(log.actor.type) + " with id " + e(log.actor.id)}'>${e(log.actor.displayName)}</td>` +
+                `<td>${e(target)}</td>` +
+                `<td>${e(changedAttributes)}</td>`;
+        });
+        const tableBody = historyTable.find('tbody');
+        tableBody.append(targetHTML);
+        const button = historyTable.parent().find('#showMore');
+        button.off("click");
+        button.on("click", () => fetchMoreHistory(links.next, 100, historyTable));
+    }
+
     // API functions
     function apiExplorer() {
         createDiv("API Explorer", mainPopup, function () {
@@ -1571,7 +1711,7 @@
         a[0].click();
     }
     function e(s) {
-        return s == null ? '' : s.toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return s == null ? '' : s.toString().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&apos;').replace(/"/g, '&quot;');
     }
     function dot(o, dots) {
         var ps = dots.split(".");
